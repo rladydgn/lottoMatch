@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.lottomatch">
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+
+    출처: https://bottlecok.tistory.com/49 [잡캐의 IT 꿀팁]
 
     <application
         android:allowBackup="true"
