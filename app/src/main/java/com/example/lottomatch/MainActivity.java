@@ -1,12 +1,18 @@
 package com.example.lottomatch;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import org.jsoup.*;
 import org.jsoup.nodes.Document;
@@ -24,26 +30,87 @@ import java.util.StringTokenizer;
 
 public class MainActivity extends AppCompatActivity {
 
-    Button lotteryButton;
+    Button lotteryButton, resetButton;
+    TextView lotteryNumbers;
     SQLiteDatabase database;
 
     // logcat
     private static final String TAG_DB = "DB";
+    private static final String TAG_EVENT = "EVENT";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        lotteryButton = findViewById(R.id.lotteryButton);
+        lotteryNumbers = findViewById(R.id.lotteryNumbers);
+        resetButton = findViewById(R.id.resetButton);
+
         DBThread thread = new DBThread();
         thread.start();
+        createDatabase();
+        getDatabase();
 
-        lotteryButton = findViewById(R.id.lotteryButton);
+        // lambda
         lotteryButton.setOnClickListener(v -> {
+            if(!thread.isReady()) {
+                Toast.makeText(getApplicationContext(), "데이터 업데이트중! 잠시후 다시시도 하세요", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Log.d(TAG_EVENT, "lotteryButton clicked");
+            Toast.makeText(getApplicationContext(), "번호 추출중 ! 잠시만 기다려주세요.", Toast.LENGTH_SHORT).show();
+            int lottoHistory[] = thread.getLottoHistory();
+            int avg = 0;
+            for(int i : lottoHistory) {
+                if(i == lottoHistory[0])
+                    continue;
+                avg += i;
+            }
+            avg /= 45;
+            int sample[] = new int[(avg+1)*45];
+            int idx = 0;
+            // sample에 지금 까지 나온 번호 통계를 이용해 숫자를 적절한 양만큼 넣어준다.
+            for(int i = 1; i < 46; i++) {
+                int n;
+                if(avg > lottoHistory[i])
+                    n = avg + avg - lottoHistory[i];
+                else
+                    n = avg - (lottoHistory[i] - avg);
+                while(true) {
+                    sample[idx++] = i;
+                    if(--n == 0)
+                        break;
+                }
+            }
+            int pickedNumbers[] = new int[6];
+            int k = 0;
+            while(true) {
+                boolean TF = false;
+                int tmp = sample[(int)(Math.random()*idx)];
+                for(int i : pickedNumbers) {
+                    if(tmp == i) {
+                        TF = true;
+                        break;
+                    }
+                }
+                if(TF)
+                    continue;
+                pickedNumbers[k++] = tmp;
+                if(k == 6)
+                    break;
+            }
+            Log.d(TAG_EVENT, "추출한 당첨번호 : " + pickedNumbers[0] + " " + pickedNumbers[1] + " "
+                    + pickedNumbers[2] + " " + pickedNumbers[3] + " " + pickedNumbers[4] + " " + pickedNumbers[5]);
+            updateDatabase(pickedNumbers);
+        });
 
+        resetButton.setOnClickListener(v -> {
+            deleteDatabase();
         });
     }
 
+    // database는 추첨한 번호들을 저장하는 용도이다.
     private void createDatabase() {
         Log.d(TAG_DB, "createDatabase called");
 
@@ -57,18 +124,42 @@ public class MainActivity extends AppCompatActivity {
                 + "fourth integer, "
                 + "fifth integer, "
                 + "sixth integer" + ")");
+    }
 
-        // 지금 까지 나온 번호, 회차 table
-        database.execSQL("create table if not exists lottoHistory" + "("
-                + "_id integer PRIMARY KEY autoincrement, "
-                + "num integer)");
+    private void updateDatabase(int[] pickedNumbers) {
+        database.execSQL("insert into lottery"
+        + "(first, second, third, fourth, fifth, sixth) "
+        + " values "
+        + "(" + pickedNumbers[0] + ", " + pickedNumbers[1] + ", " + pickedNumbers[2] + ", "
+        + pickedNumbers[3] + ", " + pickedNumbers[4] + ", " + pickedNumbers[5] + ")");
+        Log.d(TAG_DB, "DB에 레코드 저장 완료.");
+        getDatabase();
+    }
+
+    private void deleteDatabase() {
+        database.execSQL("delete from lottery");
+        Log.d(TAG_DB, "table 초기화 완료.");
+        getDatabase();
+    }
+
+    private void getDatabase() {
+        Cursor cursor = database.rawQuery("select first, second, third, fourth, fifth, sixth from lottery", null);
+        int recordCount = cursor.getCount();
+        lotteryNumbers.setText("");
+        for(int i = 0; i < recordCount; i++) {
+            cursor.moveToNext();
+            lotteryNumbers.append(cursor.getInt(0) + " " + cursor.getInt(1) + " "
+                    + cursor.getInt(2) + " " + cursor.getInt(3) + " "
+                    + cursor.getInt(4) + " " + cursor.getInt(5) + " " + "\n");
+        }
     }
 }
 
+// 당첨번호별 통계를 가져오는 스레드
 class DBThread extends Thread {
 
     int lottoHistory[] = new int[46];
-    Button lotteryButton;
+    boolean TF;
 
     // logcat
     private static final String TAG_FILE = "FILE";
@@ -85,7 +176,7 @@ class DBThread extends Thread {
 
     // 바이트스트림으로 저장하려 했으나 실패함.. ㅠ
     private void fileRead() throws IOException{
-        File f = new File("/data/data/com.example.lottomatch/files/", "history.txt");
+        File f = new File("/data/data/com.example.lottomatch", "history.txt");
         // 파일이 존재하지 않을경우
         if(!f.isFile()) {
             Log.d(TAG_FILE, "file not exists");
@@ -102,6 +193,7 @@ class DBThread extends Thread {
             br.close();
         }
         fileUpdate();
+        TF = true;
     }
 
     private void fileUpdate() throws IOException {
@@ -138,11 +230,19 @@ class DBThread extends Thread {
         lottoHistory[0] = n-1;
 
         // lottoHistory의 값들을 파일에 저장한다.
-        File f = new File("/data/data/com.example.lottomatch/files/", "history.txt");
+        File f = new File("/data/data/com.example.lottomatch", "history.txt");
         FileWriter fos = new FileWriter(f);
         for(int i = 0; i < lottoHistory.length; i++) {
             fos.write(lottoHistory[i] + " ");
         }
         fos.close();
+    }
+
+    public int[] getLottoHistory() {
+        return lottoHistory;
+    }
+
+    public boolean isReady() {
+        return TF;
     }
 }
