@@ -15,5 +15,7 @@ apk 파일을 휴대폰에 받고 설치한다.
 ## 실행 이미지
 
 ![캡처0](https://user-images.githubusercontent.com/39542757/187245831-8e24af28-62d4-4555-830b-3eb1e6c84b4a.PNG)
+
 ![캡처1](https://user-images.githubusercontent.com/39542757/187245838-eb67b427-83df-43ff-93be-6cdef62d9876.PNG)
+
 ![캡처2](https://user-images.githubusercontent.com/39542757/187245845-c313878f-bc2c-4b75-bd5c-3bf5f8355533.PNG)
